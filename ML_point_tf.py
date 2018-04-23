@@ -32,18 +32,20 @@ class MAML_HB():
 
         phi = {}
         for key, val in self.theta.items():
-            phi[key] = tf.Variable(val.initialized_value())
-
-        import pdb; pdb.set_trace()
+            #phi[key] = tf.Variable(tf.zeros(val.get_shape()))
+            phi[key] = val
 
         for k in range(K):
             pred = self.forward_pass(input_pts, phi)
             loss = mse(pred, output_pts) # higher loss means lower negative logprob
+            
             grad = tf.gradients(loss, list(phi.values()))
             grad = dict(zip(phi.keys(), grad))
 
             for key, val in phi.items():
-                tf.assign(val, val - alpha * grad[key])
+                phi_update = tf.assign(val, val - alpha * grad[key])
+
+            #import pdb; pdb.set_trace()
     
         test_input_pts, test_output_pts = sample_sin_task_pts(M, amplitude, phase)
         test_pred = self.forward_pass(test_input_pts, phi)
@@ -63,21 +65,20 @@ class MAML_HB():
         for task in self.tasks:
             task_loss = self.ML_point(task)
             task_losses.append(task_loss)
-        import pdb; pdb.set_trace()
         loss = tf.add_n(task_losses)
         print("Loss shape:", task_losses)
         grad = tf.gradients(loss, list(self.theta.values()))
         grad = dict(zip(self.theta.keys(), grad))
-        return tf.group([tf.assign(val, val - beta * grad[key]) for key, val in self.theta.items()]), loss
+        return tf.group(*[tf.assign(val, val - beta * grad[key]) for key, val in self.theta.items()]), loss
 
 
 def draw_sin_tasks(J):
     " Returns a set of sampled sin tasks (amplitude, phase). "
     return [
-        np.array(
-            np.random.uniform(minval=0.1, maxval=5.0),
-            np.random.uniform(minval=0.0, maxval=np.pi)
-        ) 
+        np.array([
+            np.random.uniform(0.1, 5.0),
+            np.random.uniform(0.0, np.pi)
+        ]) 
         for _ in range(J)
     ]
 
@@ -105,6 +106,7 @@ def main():
     for i in range(meta_training_iters):
         tasks = draw_sin_tasks(J)
         _, loss = sess.run([maml.train_op, maml.loss], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        print("Loss:", loss)
             
     graph = tf.get_default_graph()
     writer = tf.summary.FileWriter("logs")
