@@ -8,7 +8,7 @@ K = 1               # number of gradient updates in task training
 N = 10*2            # number of samples used for task training
 M = 10*2            # number of samples used for task testing
 J = 25              # number of different tasks to train on in each iteration
-meta_training_iters = 10
+meta_training_iters = 70000
 
 # Network parameters
 n_fc = 40
@@ -16,11 +16,11 @@ n_fc = 40
 class MAML_HB():
     def __init__(self):
         self.theta = {
-            "w1": tf.Variable(tf.random_normal([N, n_fc])),
+            "w1": tf.Variable(tf.truncated_normal([N, n_fc], stddev=0.01)),
             "b1": tf.Variable(tf.zeros([n_fc])),
-            "w2": tf.Variable(tf.random_normal([n_fc, n_fc])),
+            "w2": tf.Variable(tf.truncated_normal([n_fc, n_fc], stddev=0.01)),
             "b2": tf.Variable(tf.zeros([n_fc])),
-            "out": tf.Variable(tf.random_normal([n_fc, N]))
+            "out": tf.Variable(tf.truncated_normal([n_fc, N], stddev=0.01))
         }
 
         self.tasks = [tf.placeholder(tf.float32, shape=(2,)) for _ in range(J)]
