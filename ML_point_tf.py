@@ -78,15 +78,9 @@ class MAML_HB():
             loss = tf.add_n(task_losses) / tf.to_float(J)
 
             optimizer = tf.train.AdamOptimizer(learning_rate=beta)
-
+            train_op = optimizer.minimize(loss, var_list=list(self.theta.values()))
             
-            grads = tf.gradients(loss, list(self.theta.values()))
-            with tf.name_scope("grad_summaries"): 
-                for g in grads:
-                    tf.summary.scalar("{}_grad_mean".format(g.name), tf.reduce_mean(g))
-                    tf.summary.histogram("{}_grad".format(g.name), g)
-            grads = dict(zip(self.theta.keys(), grads))
-            return tf.group(*[tf.assign(val, val - beta * grads[key]) for key, val in self.theta.items()]), loss
+            return train_op, loss
 
     def _summarize_variables(self):
         with tf.name_scope("summaries"):
