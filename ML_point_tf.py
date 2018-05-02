@@ -17,10 +17,10 @@ n_fc = 40
 class MAML_HB():
     def __init__(self):
         self.theta = {
-            "w1": tf.Variable(tf.truncated_normal([N, n_fc], stddev=0.01), name="w1"),
-            "b1": tf.Variable(tf.zeros([n_fc]), name="b1"),
-            "w2": tf.Variable(tf.truncated_normal([n_fc, n_fc], stddev=0.01), name="w2"),
-            "b2": tf.Variable(tf.zeros([n_fc]), name="b2"),
+            "w1": tf.Variable(tf.truncated_normal([N, n_fc], stddev=0.1), name="w1"),
+            "b1": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b1"),
+            "w2": tf.Variable(tf.truncated_normal([n_fc, n_fc], stddev=0.1), name="w2"),
+            "b2": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b2"),
             "out": tf.Variable(tf.truncated_normal([n_fc, N], stddev=0.01), name="out")
         }
 
@@ -59,6 +59,9 @@ class MAML_HB():
             fc2 = tf.add(tf.matmul(fc1, params["w2"]), params["b2"])
             fc2 = tf.nn.relu(fc2)
             out = tf.matmul(fc2, params["out"]) + params["out"]
+
+            self._summarize_variables()
+
             return out
 
     def build_train_op(self):
@@ -68,11 +71,27 @@ class MAML_HB():
             for i, task in enumerate(self.tasks):
                 task_loss = self.ML_point(task)
                 task_losses.append(task_loss)
-            loss = tf.add_n(task_losses)
-            grad = tf.gradients(loss, list(self.theta.values()))
-            grad = dict(zip(self.theta.keys(), grad))
-            return tf.group(*[tf.assign(val, val - beta * grad[key]) for key, val in self.theta.items()]), loss
+            loss = tf.add_n(task_losses) / tf.to_float(J)
+            grads = tf.gradients(loss, list(self.theta.values()))
+            with tf.name_scope("grad_summaries"): 
+                for g in grads:
+                    tf.summary.scalar("{}_grad_mean".format(g.name), tf.reduce_mean(g))
+                    tf.summary.histogram("{}_grad".format(g.name), g)
+            grads = dict(zip(self.theta.keys(), grads))
+            return tf.group(*[tf.assign(val, val - beta * grads[key]) for key, val in self.theta.items()]), loss
 
+    def _summarize_variables(self):
+        with tf.name_scope("summaries"):
+            with tf.name_scope("w"):
+                tf.summary.scalar("mean", tf.reduce_mean(self.theta["w1"]))
+                tf.summary.histogram("histogram", self.theta["w1"])
+                tf.summary.scalar("mean", tf.reduce_mean(self.theta["w2"]))
+                tf.summary.histogram("histogram", self.theta["w2"])
+            with tf.name_scope("b"):
+                tf.summary.scalar("mean", tf.reduce_mean(self.theta["b1"]))
+                tf.summary.histogram("histogram", self.theta["b1"])
+                tf.summary.scalar("mean", tf.reduce_mean(self.theta["b2"]))
+                tf.summary.histogram("histogram", self.theta["b2"])
 
 def draw_sin_tasks(J):
     " Returns a set of sampled sin tasks (amplitude, phase). "
@@ -104,14 +123,19 @@ def eval_theta(theta):
 def main():
     sess = tf.InteractiveSession()
     maml = MAML_HB()
+    merged_summary = tf.summary.merge_all()
+
     tf.global_variables_initializer().run()
 
     train_writer = tf.summary.FileWriter("logs", sess.graph)
 
     for i in range(meta_training_iters):
         tasks = draw_sin_tasks(J)
-        _, loss = sess.run([maml.train_op, maml.loss], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
-        print("Loss:", loss)
+        summary, _, loss, w1 = sess.run([merged_summary, maml.train_op, maml.loss, maml.theta["w1"]], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        train_writer.add_summary(summary, i)
+        if i % 100 == 0:
+            print("Iter {}:".format(i), loss)
+            #print("w1: ", w1)
             
     graph = tf.get_default_graph()
     writer = tf.summary.FileWriter("logs")
