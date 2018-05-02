@@ -37,20 +37,24 @@ class MAML_HB():
                 #phi[key] = tf.Variable(tf.zeros(val.get_shape()))
                 phi[key] = val
 
-            for k in range(K):
-                pred = self.forward_pass(input_pts, phi)
-                loss = mse(pred, output_pts) # higher loss means lower negative logprob
-                #loss = tf.Print(loss, [loss])
+            with tf.name_scope("train"):
+                for k in range(K):
+                    pred = self.forward_pass(input_pts, phi)
+                    loss = mse(pred, output_pts) # higher loss means lower negative logprob
+                    #loss = tf.Print(loss, [loss])
  
-                grad = tf.gradients(loss, list(phi.values()))
-                grad = dict(zip(phi.keys(), grad))
+                    grad = tf.gradients(loss, list(phi.values()))
+                    grad = dict(zip(phi.keys(), grad))
 
-                for key, val in phi.items():
-                    phi_update = tf.assign(val, val - alpha * grad[key])
+                    phi_updates = []
+                    for key, val in phi.items():
+                        phi_updates.append(tf.assign(val, val - alpha * grad[key]))
  
-            test_input_pts, test_output_pts = sample_sin_task_pts(M, amplitude, phase)
-            test_pred = self.forward_pass(test_input_pts, phi)
-            return mse(test_pred, test_output_pts)
+            with tf.name_scope("test"):
+                with tf.control_dependencies(phi_updates):
+                    test_input_pts, test_output_pts = sample_sin_task_pts(M, amplitude, phase)
+                    test_pred = self.forward_pass(test_input_pts, phi)
+                    return mse(test_pred, test_output_pts)
 
     def forward_pass(self, inp, params):
         with tf.name_scope("model"):
@@ -58,7 +62,7 @@ class MAML_HB():
             fc1 = tf.nn.relu(fc1)
             fc2 = tf.add(tf.matmul(fc1, params["w2"]), params["b2"])
             fc2 = tf.nn.relu(fc2)
-            out = tf.matmul(fc2, params["out"]) + params["out"]
+            out = tf.matmul(fc2, params["out"])
 
             self._summarize_variables()
 
@@ -72,6 +76,10 @@ class MAML_HB():
                 task_loss = self.ML_point(task)
                 task_losses.append(task_loss)
             loss = tf.add_n(task_losses) / tf.to_float(J)
+
+            optimizer = tf.train.AdamOptimizer(learning_rate=beta)
+
+            
             grads = tf.gradients(loss, list(self.theta.values()))
             with tf.name_scope("grad_summaries"): 
                 for g in grads:
