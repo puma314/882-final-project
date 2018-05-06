@@ -17,11 +17,13 @@ n_fc = 40
 class MAML_HB():
     def __init__(self):
         self.theta = {
-            "w1": tf.Variable(tf.truncated_normal([N, n_fc], stddev=0.1), name="w1"),
+            "w1": tf.Variable(tf.truncated_normal([1, n_fc], stddev=0.1), name="w1"),
             "b1": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b1"),
             "w2": tf.Variable(tf.truncated_normal([n_fc, n_fc], stddev=0.1), name="w2"),
             "b2": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b2"),
-            "out": tf.Variable(tf.truncated_normal([n_fc, N], stddev=0.01), name="out")
+            "out": tf.Variable(tf.truncated_normal([n_fc, 1], stddev=0.01), name="out"),
+            "outb": tf.Variable(tf.truncated_normal([1], stddev=0.01), name="outb")
+
         }
 
         self.tasks = [tf.placeholder(tf.float32, shape=(2,), name="input_task") for _ in range(J)]
@@ -70,7 +72,7 @@ class MAML_HB():
             fc1 = tf.nn.relu(fc1)
             fc2 = tf.add(tf.matmul(fc1, params["w2"]), params["b2"])
             fc2 = tf.nn.relu(fc2)
-            out = tf.matmul(fc2, params["out"])
+            out = tf.add(tf.matmul(fc2, params["out"]), params["outb"])
 
             self._summarize_variables()
 
@@ -117,7 +119,7 @@ def sample_sin_task_pts(N, amplitude, phase):
     " Given sin task params (amplitude, phase), returns N observations sampled from the task. "
     input_points = tf.random_uniform((1, N), minval=-10., maxval=10.)
     output_points = amplitude * tf.sin(input_points + phase)
-    return input_points, output_points
+    return tf.transpose(input_points), tf.transpose(output_points)
 
 def mse(pred, actual):
     return tf.reduce_mean(tf.squared_difference(pred, actual)) 
