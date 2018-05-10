@@ -2,9 +2,6 @@
 import tensorflow as tf
 import numpy as np
 
-layer_collection = tf.contrib.kfac.layer_collection
-kfac_opt = tf.contrib.kfac.optimizer
-
 # MAML parameters
 alpha = 1e-3        # task learning rate
 beta = 0.001        # meta learning rate
@@ -57,7 +54,6 @@ class MAML_HB():
             input_pts, output_pts = sample_linear_task_pts(N, task_phi)
 
             phi = {}
-            self.before_theta = self.theta["w1"]
 
             with tf.name_scope("train"):
                 # Initialize phi with the first gradient update
@@ -71,7 +67,6 @@ class MAML_HB():
                 
                 grad = dict(zip(self.theta.keys(), grad))
                 phi = dict(zip(self.theta.keys(), [self.theta[key] - alpha * grad[key] for key in self.theta.keys()]))
-#                print(phi)
 
                 keys, vals = zip(*[(k, v) for k, v in phi.items()])
                 flat_params = tf.squeeze(tensors_to_column(vals))
@@ -79,9 +74,6 @@ class MAML_HB():
                 phi = {keys[i]: phi[i] for i in range(len(phi))}
 
             with tf.name_scope("test"):
-                #with tf.control_dependencies(phi_updates):
-                self.after_theta = self.theta["w1"]
-                self.after_phi = phi["w1"]
                 test_input_pts, test_output_pts = sample_linear_task_pts(M, task_phi)
                 test_pred = self.forward_pass(test_input_pts, phi)
                 test_mse = mse(test_pred, test_output_pts)
@@ -103,10 +95,6 @@ class MAML_HB():
             self._summarize_variables()
             return fc1
 
-    def build_test_op(self):
-        '''To test data'''
-        with tf.name_scope("test_task"):
-            
     def build_train_op(self):
         " One iter of the outer loop. "
         with tf.name_scope("outer_loop"):
@@ -167,17 +155,14 @@ def main():
     theta = tf.random_uniform((n_fc,1), minval = 5., maxval = 7.)
     theta = np.array([5., -1., 2., 0.]*10)
     assert(len(theta) == n_fc)
-    for i in range(meta_training_iters):
+    for i in range(500):
         tasks = draw_phi_tasks(J, theta)
-        summary, _, loss, bef, aft, aft_phi = sess.run([merged_summary, maml.train_op, maml.loss, maml.before_theta, maml.after_theta, maml.after_phi], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        summary, _, loss = sess.run([merged_summary, maml.train_op, maml.loss], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
         train_writer.add_summary(summary, i)
         if i % 1 == 0:
             print("Iter {}:".format(i), loss)
-            print(bef)
-            input()
-            #print("bef: ", bef[0, :5])
-            #print("aft: ", aft[0, :5])
-            #print("aft_phi: ", aft_phi[0, :5])
+
+    import pdb; pdb.set_trace()
             
     graph = tf.get_default_graph()
     writer = tf.summary.FileWriter("logs")
