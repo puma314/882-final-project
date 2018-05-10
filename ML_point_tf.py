@@ -85,6 +85,25 @@ class MAML_HB():
             
             return train_op, loss
 
+    def finetune_and_test(self, input_pts, output_pts, num_steps, test_input_pts):
+        pred = self.forward_pass(input_pts, self.theta)
+        loss = mse(pred, output_pts)
+        grad = tf.gradients(loss, list(self.theta.values()))
+        grad = dict(zip(self.theta.keys(), grad))
+        phi = dict(zip(self.theta.keys(), [self.theta[key] - alpha * grad[key] for key in self.theta.keys()]))
+
+        for _ in range(num_steps - 1):
+            pred = self.forward_pass(input_pts, phi)
+            loss = mse(pred, output_pts)
+
+            grad = tf.gradients(loss, list(phi.values()))
+            grad = dict(zip(phi.keys(), grad))
+
+            phi = dict(zip(phi.keys(), [phi[key] - alpha * grad[key] for key in phi.keys()])) 
+
+        test_pred = self.forward_pass(test_input_pts, phi)
+        return test_pred
+
     def _summarize_variables(self):
         with tf.name_scope("summaries"):
             with tf.name_scope("w"):
@@ -117,7 +136,7 @@ def sample_sin_task_pts(N, amplitude, phase):
 def mse(pred, actual):
     return tf.reduce_mean(tf.squared_difference(pred, actual)) 
    
-def main():
+def train(iters):
     sess = tf.InteractiveSession()
     maml = MAML_HB()
     merged_summary = tf.summary.merge_all()
@@ -126,14 +145,14 @@ def main():
 
     train_writer = tf.summary.FileWriter("logs", sess.graph)
 
-    for i in range(meta_training_iters):
+    for i in range(iters):
         tasks = draw_sin_tasks(J)
-        summary, _, loss = sess.run([merged_summary, maml.train_op], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
-        theta = maml.theta
+        summary, _, loss, theta = sess.run([merged_summary, maml.train_op, maml.loss, maml.theta], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        
         train_writer.add_summary(summary, i)
         if i % 100 == 0:
             print("Iter {}:".format(i), loss)
-            print("Theta: ", theta)
+            #print("Theta: ", theta)
             #print("bef: ", bef[0, :5])
             #print("aft: ", aft[0, :5])
             #print("aft_phi: ", aft_phi[0, :5])
@@ -144,4 +163,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    train(meta_training_iters)
