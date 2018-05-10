@@ -35,7 +35,6 @@ class MAML_HB():
             input_pts, output_pts = sample_sin_task_pts(N, amplitude, phase)
 
             phi = {}
-            self.before_theta = self.theta["w1"]
 
             with tf.name_scope("train"):
                 # Initialize phi with the first gradient update
@@ -53,15 +52,9 @@ class MAML_HB():
                     grad = tf.gradients(loss, list(phi.values()))
                     grad = dict(zip(phi.keys(), grad))
 
-                    #phi_updates = []
-                    #for key, val in phi.items():
-                    #    phi_updates.append(tf.assign(val, val - alpha * grad[key]))
                     phi = dict(zip(phi.keys(), [phi[key] - alpha * grad[key] for key in phi.keys()])) 
  
             with tf.name_scope("test"):
-                #with tf.control_dependencies(phi_updates):
-                self.after_theta = self.theta["w1"]
-                self.after_phi = phi["w1"]
                 test_input_pts, test_output_pts = sample_sin_task_pts(M, amplitude, phase)
                 test_pred = self.forward_pass(test_input_pts, phi)
                 return mse(test_pred, test_output_pts)
@@ -123,15 +116,7 @@ def sample_sin_task_pts(N, amplitude, phase):
 
 def mse(pred, actual):
     return tf.reduce_mean(tf.squared_difference(pred, actual)) 
-
-def eval_theta(theta):
-    task = {"amplitude": 2, "phase": np.pi/2}
-    train_inp, train_out = sample_sin_task(50, task)
-    phi = ML_point(theta, task, train=True)
-    test_inp, test_out = sample_sin_task(100, task = {"amplitude": 2, "phase": np.pi/2})
-    preds = toy_model(test_inp, phi) 
-    return mse(preds, test_out)
-    
+   
 def main():
     sess = tf.InteractiveSession()
     maml = MAML_HB()
@@ -143,10 +128,12 @@ def main():
 
     for i in range(meta_training_iters):
         tasks = draw_sin_tasks(J)
-        summary, _, loss, bef, aft, aft_phi = sess.run([merged_summary, maml.train_op, maml.loss, maml.before_theta, maml.after_theta, maml.after_phi], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        summary, _, loss = sess.run([merged_summary, maml.train_op], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        theta = maml.theta
         train_writer.add_summary(summary, i)
         if i % 100 == 0:
             print("Iter {}:".format(i), loss)
+            print("Theta: ", theta)
             #print("bef: ", bef[0, :5])
             #print("aft: ", aft[0, :5])
             #print("aft_phi: ", aft_phi[0, :5])
