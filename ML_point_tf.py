@@ -128,7 +128,7 @@ def main():
 
     for i in range(meta_training_iters):
         tasks = draw_sin_tasks(J)
-        summary, _, loss = sess.run([merged_summary, maml.train_op], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        summary, _, loss = sess.run([merged_summary, maml.train_op, maml.loss], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
         theta = maml.theta
         train_writer.add_summary(summary, i)
         if i % 100 == 0:
