@@ -63,19 +63,20 @@ class MAML_HB():
 
             with tf.name_scope("train"):
                 # Initialize phi with the first gradient update
-                fast_weights = self.theta
-                keys, vals = zip(*[(k, v) for k, v in fast_weights.items()])
-                flat_params = tf.squeeze(tensors_to_column(vals))
-                fast_weights = column_to_tensors(vals, flat_params)
-                fast_weights = {keys[i]: fast_weights[i] for i in range(len(fast_weights))}
-                self.theta = fast_weights
-
                 pred = self.forward_pass(input_pts, self.theta)
                 loss = mse(pred, output_pts)
                 loss = tf.Print(loss, [loss])
                 grad = tf.gradients(loss, list(self.theta.values()))
                 grad = dict(zip(self.theta.keys(), grad))
                 phi = dict(zip(self.theta.keys(), [self.theta[key] - alpha * grad[key] for key in self.theta.keys()]))
+#                print(phi)
+
+                keys, vals = zip(*[(k, v) for k, v in phi.items()])
+                flat_params = tf.squeeze(tensors_to_column(vals))
+                phi = column_to_tensors(vals, flat_params)
+                phi = {keys[i]: phi[i] for i in range(len(phi))}
+                #print(phi)
+
 
                 for k in range(K-1):
                     pred = self.forward_pass(input_pts, phi)
