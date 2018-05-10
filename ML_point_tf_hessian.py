@@ -1,6 +1,7 @@
 #from livelossplot import PlotLosses
 import tensorflow as tf
 import numpy as np
+import time
 
 # MAML parameters
 alpha = 1e-3        # task learning rate
@@ -13,6 +14,7 @@ meta_training_iters = 50000
 
 # Network parameters
 n_fc = 40
+tau = 40.
 
 def tensors_to_column(tensors):
     if isinstance(tensors, (tuple, list)):
@@ -67,6 +69,10 @@ class MAML_HB():
                 loss = mse(pred, output_pts)
                 loss = tf.Print(loss, [loss])
                 grad = tf.gradients(loss, list(self.theta.values()))
+                phi = dict(zip(self.theta.keys(), [self.theta[key] + 0. for key in self.theta.keys()]))
+                keys, vals = zip(*[(k, v) for k, v in phi.items()])
+                og_flat_params = tf.squeeze(tensors_to_column(vals))
+                
                 grad = dict(zip(self.theta.keys(), grad))
                 phi = dict(zip(self.theta.keys(), [self.theta[key] - alpha * grad[key] for key in self.theta.keys()]))
 #                print(phi)
@@ -96,7 +102,28 @@ class MAML_HB():
                 self.after_phi = phi["w1"]
                 test_input_pts, test_output_pts = sample_sin_task_pts(M, amplitude, phase)
                 test_pred = self.forward_pass(test_input_pts, phi)
-                return mse(test_pred, test_output_pts)
+                test_mse = mse(test_pred, test_output_pts)
+
+                #test_mse = tf.Print(test_mse, [], message="Before Hessian eval")
+                log_pr_hessian = tf.hessians(test_mse, flat_params)
+                #test_mse = tf.Print(test_mse, [log_pr_hessian], message="After Hessian eval")
+                #test_mse = tf.Print(test_mse, [log_pr_hessian], message = "log PROB hessian")
+                #test_mse = tf.Print(test_mse, [tf.linalg.logdet(log_pr_hessian)], message = "log det prob hessian")
+
+                #log_prior = 0.5 * tf.squared_difference(og_flat_params, flat_params) * 1./tau +\
+                #             0.5 * tf.log(1600. * tau)
+
+                # log_prior_hessian = tf.hessians(log_prior, flat_params)
+                # test_mse = tf.Print(test_mse, [log_prior_hessian], message = "log PRIOR hessian")
+                # #test_mse = tf.Print(test_mse, [tf.linalg.logdet(log_prior_hessian)], message = "log det log prior hessian")
+                #print(flat_params.shape[0])
+                log_prior_hessian = tf.eye(1761) * tau
+                hessian = tf.add(log_pr_hessian, log_prior_hessian)
+
+                #test_mse = tf.Print(test_mse, [hessian, tf.linalg.logdet(hessian)], message = "HESSIAN")
+                #test_mse = tf.Print(test_mse, [test_mse])
+                return test_mse, tf.linalg.logdet(hessian)
+                #return tf.add(test_mse, tf.linalg.logdet(hessian))
 
     def forward_pass(self, inp, params):
         with tf.name_scope("model"):
@@ -118,6 +145,8 @@ class MAML_HB():
                 task_loss = self.ML_point(task)
                 task_losses.append(task_loss)
             loss = tf.add_n(task_losses) / tf.to_float(J)
+            test_mses = [x[0] for x in task_losses]
+            loss = tf.Print(loss, test_mses, message = "Test MSEs")
 
             optimizer = tf.train.AdamOptimizer(learning_rate=beta)
             train_op = optimizer.minimize(loss, var_list=list(self.theta.values()))
@@ -172,16 +201,16 @@ def main():
     tf.global_variables_initializer().run()
 
     train_writer = tf.summary.FileWriter("logs", sess.graph)
-
+    prev_time = time.time()
     for i in range(meta_training_iters):
         tasks = draw_sin_tasks(J)
         summary, _, loss, bef, aft, aft_phi = sess.run([merged_summary, maml.train_op, maml.loss, maml.before_theta, maml.after_theta, maml.after_phi], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
         train_writer.add_summary(summary, i)
-        if i % 100 == 0:
+        new_time = time.time()
+        if i % 1 == 0:
+            print(new_time - prev_time)
             print("Iter {}:".format(i), loss)
-            #print("bef: ", bef[0, :5])
-            #print("aft: ", aft[0, :5])
-            #print("aft_phi: ", aft_phi[0, :5])
+            prev_time = new_time
             
     graph = tf.get_default_graph()
     writer = tf.summary.FileWriter("logs")
