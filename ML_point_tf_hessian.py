@@ -153,6 +153,36 @@ class MAML_HB():
             
             return train_op, loss
 
+    def finetune_and_test(self, input_pts, output_pts, num_steps, test_input_pts):
+        pred = self.forward_pass(input_pts, self.theta)
+        loss = mse(pred, output_pts)
+        grad = tf.gradients(loss, list(self.theta.values()))
+        grad = dict(zip(self.theta.keys(), grad))
+        phi = dict(zip(self.theta.keys(), [self.theta[key] - alpha * grad[key] for key in self.theta.keys()]))
+
+        for _ in range(num_steps - 1): #this is never gone through
+            pred = self.forward_pass(input_pts, phi)
+            loss = mse(pred, output_pts)
+
+            grad = tf.gradients(loss, list(phi.values()))
+            grad = dict(zip(phi.keys(), grad))
+
+            phi = dict(zip(phi.keys(), [phi[key] - alpha * grad[key] for key in phi.keys()])) 
+        
+        #splice in flat_params
+        keys, vals = zip(*[(k, v) for k, v in phi.items()])
+        flat_params = tf.squeeze(tensors_to_column(vals))
+        phi = column_to_tensors(vals, flat_params)
+        phi = {keys[i]: phi[i] for i in range(len(phi))}
+
+        adapted_pred = self.forward_pass(input_pts, phi)
+        adapted_mse = mse(adapted_pred, output_pts)
+        log_pr_hessian = tf.hessians(adapted_mse, flat_params)
+        log_prior_hessian = tf.eye(1761) * tau
+        hessian = tf.add(log_pr_hessian, log_prior_hessian)
+
+        return test_pred, flat_params, hessian
+
     def _summarize_variables(self):
         with tf.name_scope("summaries"):
             with tf.name_scope("w"):

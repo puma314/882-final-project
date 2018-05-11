@@ -12,8 +12,8 @@ J = 10              # number of different tasks to train on in each iteration
 meta_training_iters = 50000
 
 # Network parameters
-n_fc = 40
-tau = 0.05
+n_fc = 48
+tau = 1.
 
 def tensors_to_column(tensors):
     if isinstance(tensors, (tuple, list)):
@@ -44,14 +44,14 @@ class MAML_HB():
             "w1": tf.Variable(tf.truncated_normal([n_fc,1], stddev=0.1), name="w1"),
             "b1": tf.Variable(tf.constant(0.1, shape=[1]), name="b1"),
         }
-
+        self.use_hess = tf.placeholder(tf.bool, name = "use_hess")
         self.tasks = [tf.placeholder(tf.float32, shape=(n_fc,1), name="input_task") for _ in range(J)]
         self.train_op, self.loss = self.build_train_op()
-    
+
     def ML_point(self, task):
         with tf.name_scope("ML_point"):
             task_phi = task
-            input_pts, output_pts = sample_linear_task_pts(np.random.randint(3,20), task_phi, noise = 1.)
+            input_pts, output_pts = sample_linear_task_pts(np.random.choice([5, 7, 10, 15, 18, 20, 400, 500, 630, 800]), task_phi, noise = np.random.uniform(0.1, 10.))
 
             phi = {}
 
@@ -81,12 +81,17 @@ class MAML_HB():
                 log_pr_hessian = tf.hessians(test_mse, flat_params)
                 log_prior_hessian = tf.eye(n_fc + 1) * tau
                 hessian = tf.add(log_prior_hessian, log_pr_hessian)
+                test_mse = tf.Print(test_mse, [test_mse, tf.linalg.logdet(hessian)], message = "Sanity")
+                loss = tf.cond(tf.equal(self.use_hess, tf.constant(True)), 
+                    lambda: tf.add(test_mse, tf.linalg.logdet(hessian)),
+                    lambda: test_mse)
                 
+
                 #test_mse = tf.Print(test_mse, [log_pr_hessian], message = "Log Pr Hessian")
                 #test_mse = tf.Print(test_mse, [tf.linalg.logdet(hessian)], message = "Log det")
                 
-                #return test_mse
-                return tf.add(test_mse, tf.linalg.logdet(hessian))
+                return loss
+                #return tf.add(test_mse, tf.linalg.logdet(hessian))
 
 
     def forward_pass(self, inp, params):
@@ -160,16 +165,14 @@ def main():
     train_writer = tf.summary.FileWriter("logs", sess.graph)
 
     theta = tf.random_uniform((n_fc,1), minval = 5., maxval = 7.)
-    theta = np.array([5., -1., 2., 0.]*10)
+    theta = np.array([5., -1., 2., 0.]*25)
     assert(len(theta) == n_fc)
-    for i in range(500):
+    for i in range(5000):
         tasks = draw_phi_tasks(J, theta)
-        summary, _, loss = sess.run([merged_summary, maml.train_op, maml.loss], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
+        theta, _, loss = sess.run([maml.theta, maml.train_op, maml.loss], feed_dict={tp: task for tp, task in zip(maml.tasks, tasks)})
         train_writer.add_summary(summary, i)
         if i % 1 == 0:
             print("Iter {}:".format(i), loss)
-
-    import pdb; pdb.set_trace()
             
     graph = tf.get_default_graph()
     writer = tf.summary.FileWriter("logs")
