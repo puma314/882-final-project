@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 from autograd import grad
 
 alpha = 0.01 #task learning rate
-beta = 0.01 #meta learning rate
+beta = 0.001 #meta learning rate
 K = 1 #number of gradient updates in task training
-N = 10 #number of samples used for task training
+N = 5 #number of samples used for task training
 M = 10 #number of samples used for task testing
 J = 10 #number of different tasks to train on in each iteration
 

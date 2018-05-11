@@ -13,6 +13,31 @@ meta_training_iters = 50000
 
 # Network parameters
 n_fc = 40
+tau = 40.
+
+def tensors_to_column(tensors):
+    if isinstance(tensors, (tuple, list)):
+        return tf.concat(tuple(tf.reshape(tensor, [-1, 1]) for tensor in tensors), axis=0)
+    else:
+        return tf.reshape(tensors, [-1, 1])
+
+
+def column_to_tensors(tensors_template, colvec):
+    with tf.name_scope("column_to_tensors"):
+        if isinstance(tensors_template, (tuple, list)):
+            offset = 0
+            tensors = []
+            for tensor_template in tensors_template:
+                sz = np.prod(tensor_template.shape.as_list(), dtype=np.int32)
+                tensor = tf.reshape(colvec[offset:(offset + sz)], tensor_template.shape)
+                tensors.append(tensor)
+                offset += sz
+
+            tensors = tuple(tensors)
+        else:
+            tensors = tf.reshape(colvec, tensors_template.shape)
+
+        return tensors
 
 class MAML_HB():
     def __init__(self):
@@ -100,6 +125,47 @@ class MAML_HB():
             grad = dict(zip(phi.keys(), grad))
 
             phi = dict(zip(phi.keys(), [phi[key] - alpha * grad[key] for key in phi.keys()])) 
+
+        test_pred = self.forward_pass(test_input_pts, phi)
+        return test_pred
+    
+    def finetune_and_test_hessian(self, input_pts, output_pts, num_steps, test_input_pts):
+        "This returns the Hessian at the adapted parameter value for uncertainty estimates"
+        pred = self.forward_pass(input_pts, self.theta)
+        loss = mse(pred, output_pts)
+        grad = tf.gradients(loss, list(self.theta.values()))
+        grad = dict(zip(self.theta.keys(), grad))
+        phi = dict(zip(self.theta.keys(), [self.theta[key] - alpha * grad[key] for key in self.theta.keys()]))
+
+        for _ in range(num_steps - 1): #this is never gone through
+            pred = self.forward_pass(input_pts, phi)
+            loss = mse(pred, output_pts)
+
+            grad = tf.gradients(loss, list(phi.values()))
+            grad = dict(zip(phi.keys(), grad))
+
+            phi = dict(zip(phi.keys(), [phi[key] - alpha * grad[key] for key in phi.keys()])) 
+        
+        #splice in flat_params
+        keys, vals = zip(*[(k, v) for k, v in phi.items()])
+        flat_params = tf.squeeze(tensors_to_column(vals))
+        phi = column_to_tensors(vals, flat_params)
+        phi = {keys[i]: phi[i] for i in range(len(phi))}
+
+        adapted_pred = self.forward_pass(input_pts, phi)
+        adapted_mse = mse(adapted_pred, output_pts)
+        log_pr_hessian = tf.hessians(adapted_mse, flat_params)
+        log_prior_hessian = tf.eye(1761) * tau
+        hessian = tf.add(log_pr_hessian, log_prior_hessian)
+        
+        test_pred = self.forward_pass(test_input_pts, phi)
+
+        return test_pred, flat_params, hessian
+
+    def test_pred(self, test_input_pts, flattened_phi):
+        phi = column_to_tensors(list(self.theta.values()), flattened_phi)
+        keys = list(self.theta.keys())
+        phi = {keys[i]: phi[i] for i in range(len(phi))}
 
         test_pred = self.forward_pass(test_input_pts, phi)
         return test_pred

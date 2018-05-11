@@ -13,7 +13,7 @@ meta_training_iters = 50000
 
 # Network parameters
 n_fc = 40
-tau = 0.1
+tau = 0.05
 
 def tensors_to_column(tensors):
     if isinstance(tensors, (tuple, list)):
@@ -51,7 +51,7 @@ class MAML_HB():
     def ML_point(self, task):
         with tf.name_scope("ML_point"):
             task_phi = task
-            input_pts, output_pts = sample_linear_task_pts(N, task_phi)
+            input_pts, output_pts = sample_linear_task_pts(np.random.randint(3,20), task_phi, noise = 1.)
 
             phi = {}
 
@@ -85,8 +85,8 @@ class MAML_HB():
                 #test_mse = tf.Print(test_mse, [log_pr_hessian], message = "Log Pr Hessian")
                 #test_mse = tf.Print(test_mse, [tf.linalg.logdet(hessian)], message = "Log det")
                 
-                return test_mse
-                #return tf.add(test_mse, tf.linalg.logdet(hessian))
+                #return test_mse
+                return tf.add(test_mse, tf.linalg.logdet(hessian))
 
 
     def forward_pass(self, inp, params):
@@ -94,6 +94,11 @@ class MAML_HB():
             fc1 = tf.add(tf.matmul(inp, params["w1"]), params["b1"])
             self._summarize_variables()
             return fc1
+
+    def build_test_op(self):
+        '''To test data'''
+        with tf.name_scope("test_task"):
+            pass
 
     def build_train_op(self):
         " One iter of the outer loop. "
@@ -133,11 +138,13 @@ def draw_phi_tasks(J, theta):
         for _ in range(J)
     ]
 
-def sample_linear_task_pts(N, phi):
+def sample_linear_task_pts(N, phi, min_val = -10, max_val = 10., noise = False):
     "Given a phi, randomly generates N inputs and creates output vector"
-    input_points = tf.random_uniform((N, n_fc), minval=-10., maxval=10.)
+    input_points = tf.random_uniform((N, n_fc), minval=min_val, maxval=max_val)
     #randomly generated design matrix
     output_points = tf.matmul(input_points, phi)
+    if noise:
+        output_points = tf.add(output_points, tf.random_normal((N,1), mean = 0., stddev = noise))
     return input_points, output_points
 
 def mse(pred, actual):
