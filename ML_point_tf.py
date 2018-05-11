@@ -40,16 +40,22 @@ def column_to_tensors(tensors_template, colvec):
         return tensors
 
 class MAML_HB():
-    def __init__(self):
-        self.theta = {
-            "w1": tf.Variable(tf.truncated_normal([1, n_fc], stddev=0.1), name="w1"),
-            "b1": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b1"),
-            "w2": tf.Variable(tf.truncated_normal([n_fc, n_fc], stddev=0.1), name="w2"),
-            "b2": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b2"),
-            "out": tf.Variable(tf.truncated_normal([n_fc, 1], stddev=0.01), name="out"),
-            "outb": tf.Variable(tf.truncated_normal([1], stddev=0.01), name="outb")
-
-        }
+    def __init__(self, init_theta={}):
+        if init_theta:
+            print("Restoring theta from ckpt")
+            self.theta = {}
+            for k, v in init_theta.items():
+                self.theta[k] = tf.Variable(v, name=k)
+            print(self.theta)
+        else:
+            self.theta = {
+                "w1": tf.Variable(tf.truncated_normal([1, n_fc], stddev=0.1), name="w1"),
+                "b1": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b1"),
+                "w2": tf.Variable(tf.truncated_normal([n_fc, n_fc], stddev=0.1), name="w2"),
+                "b2": tf.Variable(tf.constant(0.1, shape=[n_fc]), name="b2"),
+                "out": tf.Variable(tf.truncated_normal([n_fc, 1], stddev=0.01), name="out"),
+                "outb": tf.Variable(tf.truncated_normal([1], stddev=0.01), name="outb")
+            }
 
         self.tasks = [tf.placeholder(tf.float32, shape=(2,), name="input_task") for _ in range(J)]
         self.train_op, self.loss = self.build_train_op()
