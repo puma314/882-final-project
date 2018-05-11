@@ -135,7 +135,7 @@ class MAML_HB():
         test_pred = self.forward_pass(test_input_pts, phi)
         return test_pred
     
-    def finetune_and_test_hessian(self, input_pts, output_pts, num_steps, test_input_pts):
+    def finetune_and_test_hessian(self, input_pts, output_pts, num_steps, test_input_pts, inp_tau):
         "This returns the Hessian at the adapted parameter value for uncertainty estimates"
         pred = self.forward_pass(input_pts, self.theta)
         loss = mse(pred, output_pts)
@@ -161,7 +161,7 @@ class MAML_HB():
         adapted_pred = self.forward_pass(input_pts, phi)
         adapted_mse = mse(adapted_pred, output_pts)
         log_pr_hessian = tf.hessians(adapted_mse, flat_params)
-        log_prior_hessian = tf.eye(1761) * tau
+        log_prior_hessian = tf.eye(1761) * inp_tau
         hessian = tf.add(log_pr_hessian, log_prior_hessian)
         
         test_pred = self.forward_pass(test_input_pts, phi)
